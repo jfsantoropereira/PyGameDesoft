@@ -15,7 +15,7 @@ pygame.display.set_caption('Goal Masters')
 game = True
 
 # ----- Inicia assets
-imagem_original = pygame.image.load(r"C:\Users\Pe\Downloads\ChatGPT Image 14 de mai. de 2025, 08_12_27.png").convert()
+imagem_original = pygame.image.load("imagens/imagem inicial.png").convert()
 image = pygame.transform.scale(imagem_original, (WIDTH, HEIGHT))
 
 # ----- Inicia fonte para o texto

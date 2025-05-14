@@ -5,8 +5,8 @@ import pygame
 pygame.init()
 
 # ----- Gera tela principal
-WIDTH = 500
-HEIGHT = 400
+WIDTH = 1200
+HEIGHT = 700
 window = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption('Hello World!')
 
@@ -14,7 +14,8 @@ pygame.display.set_caption('Hello World!')
 game = True
 
 # ----- Inicia assets
-image = pygame.image.load('assets/img/logo-madfox.png').convert()
+imagem_original = pygame.image.load(r"C:\Users\Pe\Downloads\ChatGPT Image 14 de mai. de 2025, 08_12_27.png").convert()
+image = pygame.transform.scale(imagem_original, (WIDTH, HEIGHT))
 
 # ===== Loop principal =====
 while game:

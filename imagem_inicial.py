@@ -19,8 +19,8 @@ imagem_original = pygame.image.load(r"C:\Users\Pe\Downloads\ChatGPT Image 14 de 
 image = pygame.transform.scale(imagem_original, (WIDTH, HEIGHT))
 
 # ----- Inicia fonte para o texto
-font = pygame.font.SysFont("Arial", 36)  # Fonte Arial, tamanho 36
-text = font.render("Let's play Goal Masters!", True, (255, 255, 255))  # Texto branco
+font = pygame.font.SysFont("Arial", 80)  # Fonte Arial, tamanho 36
+text = font.render("Let's play Goal Masters!", True, (0, 0, 0))  # Texto branco
 
 # ===== Loop principal =====
 while game:
@@ -30,15 +30,15 @@ while game:
         if event.type == pygame.QUIT:
             game = False
 
-# ----- Gera saídas
-window.fill((0, 0, 0))  # Preenche com a cor preta
-window.blit(image, (10, 10))  # Exibe a imagem
+    # ----- Gera saídas
+    window.fill((0, 0, 0))  # Preenche com a cor preta
+    window.blit(image, (10, 10))  # Exibe a imagem
 
-# ----- Exibe o texto na tela
-window.blit(text, (WIDTH // 2 - text.get_width() // 2, 50))  # Centraliza o texto na parte superior da tela
+    # ----- Exibe o texto na tela
+    window.blit(text, (WIDTH // 2 - text.get_width() // 2, 50))  # Centraliza o texto na parte superior da tela
 
-# ----- Atualiza estado do jogo
-pygame.display.update()  # Mostra o novo frame para o jogador
+    # ----- Atualiza estado do jogo
+    pygame.display.update()  # Mostra o novo frame para o jogador
 
 # ===== Finalização =====
 pygame.quit()

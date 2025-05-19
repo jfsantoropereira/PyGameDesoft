@@ -13,6 +13,11 @@ class Ball:
         self.is_on_ground = True # Starts on the ground
         self.lateral_acceleration_x = 0.0
 
+        # Knuckleball state
+        self.knuckle_acceleration = pygame.math.Vector3(0, 0, 0)
+        self.knuckle_change_timer = 0.0
+        self.current_knuckle_interval = 0.0 # Stores the randomly chosen interval duration
+
         # Sprite placeholder (a simple circle)
         # In a real game, this would be an image, and its base size might be in world units or pixels at a reference depth
         self.base_sprite_radius_world_units = self.radius 
@@ -36,6 +41,10 @@ class Ball:
         self.is_kicked = False
         self.is_on_ground = True
         self.lateral_acceleration_x = 0.0
+        # Reset knuckleball state on spawn
+        self.knuckle_acceleration.xyz = (0, 0, 0)
+        self.knuckle_change_timer = 0.0
+        self.current_knuckle_interval = 0.0 # Initialize with 0, will be set on first knuckle effect
         print(f"Ball spawned at {self.world_pos}")
 
     def kick(self, power_fraction, horizontal_aim_deg, pointer_x_offset, pointer_z_offset):
@@ -84,6 +93,13 @@ class Ball:
         
         self.is_kicked = True
         self.is_on_ground = False # Ball is now airborne
+        # Initialize knuckleball timer and interval on kick, so it's ready if threshold met
+        min_interval = config_manager.get_setting('knuckleball_min_change_interval', 0.0)
+        max_interval = config_manager.get_setting('knuckleball_max_change_interval', 1.0)
+        self.current_knuckle_interval = random.uniform(min_interval, max_interval)
+        self.knuckle_change_timer = 0.0 # Start timer
+        self.knuckle_acceleration.xyz = (0,0,0) # Ensure no knuckle effect right at kick start unless speed is already high
+
         print(f"Ball kicked: V={self.velocity}, AimH={horizontal_aim_deg}, AimV={clamped_vertical_angle_deg}, PtrX={pointer_x_offset}, PtrZ={pointer_z_offset}, AccelX={self.lateral_acceleration_x}")
 
 
@@ -91,19 +107,45 @@ class Ball:
         if not self.is_kicked:
             return
 
-        # Apply gravity
-        self.velocity.z -= constants.GRAVITY * dt
+        # Knuckleball parameters from config
+        knuckle_threshold_speed = config_manager.get_setting('knuckleball_threshold_speed', 25.0)
+        knuckle_min_accel = config_manager.get_setting('knuckleball_min_acceleration', 0.0)
+        knuckle_max_accel = config_manager.get_setting('knuckleball_max_acceleration', 2.0)
+        knuckle_min_interval = config_manager.get_setting('knuckleball_min_change_interval', 0.0)
+        knuckle_max_interval = config_manager.get_setting('knuckleball_max_change_interval', 1.0)
 
-        # Apply curve dynamics if ball is in the air
+        current_speed = self.velocity.length()
+
+        if current_speed > knuckle_threshold_speed and self.world_pos.z > self.radius:
+            self.knuckle_change_timer += dt
+            if self.knuckle_change_timer >= self.current_knuckle_interval:
+                self.knuckle_change_timer = 0.0 # Reset timer
+                self.current_knuckle_interval = random.uniform(knuckle_min_interval, knuckle_max_interval)
+                
+                kn_accel_x = random.uniform(knuckle_min_accel, knuckle_max_accel) * random.choice([-1, 1])
+                # Knuckle effect on Z could be similar, or perhaps biased if desired (e.g. more often down?)
+                # For now, symmetrical like X.
+                kn_accel_z = random.uniform(knuckle_min_accel, knuckle_max_accel) * random.choice([-1, 1])
+                self.knuckle_acceleration.xyz = (kn_accel_x, 0, kn_accel_z)
+        else:
+            # If speed drops or ball is on ground, reset knuckle effect
+            self.knuckle_acceleration.xyz = (0, 0, 0)
+            self.knuckle_change_timer = 0.0 # Reset timer for next potential activation
+            # Optionally, could also reset self.current_knuckle_interval here or let it persist
+
+        # Apply gravity and Z-component of knuckleball acceleration
+        self.velocity.z += (self.knuckle_acceleration.z - constants.GRAVITY) * dt
+
+        # Apply curve dynamics and X-component of knuckleball acceleration if ball is in the air
         if self.world_pos.z > self.radius: # Apply only while Z > r
-            self.velocity.x += self.lateral_acceleration_x * dt
+            self.velocity.x += (self.lateral_acceleration_x + self.knuckle_acceleration.x) * dt
         else:
             # If it was curving but now on ground, curve effect might stop or change.
-            # For MVP, let's assume curve accel stops if Z condition not met, even if is_kicked is true.
-            pass
+            # Knuckle effect is already handled above to stop if on ground or too slow.
+            # For MVP, let's assume curve accel stops if Z condition not met.
+            pass # lateral_acceleration_x will not be applied if this else branch is taken next tick and world_pos.z <= radius
 
-
-        # Update position
+        # Update position (Y velocity is not affected by curve or knuckle)
         self.world_pos += self.velocity * dt
         
         # Check for ground collision

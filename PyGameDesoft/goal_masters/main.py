@@ -1,5 +1,6 @@
 import pygame
 import sys
+import math # Added for math.radians, math.sin, math.cos
 from . import constants
 from .config import config_manager
 from .camera import Camera
@@ -33,6 +34,7 @@ class Game:
                                               HUD_CONTACT_SELECTOR_RADIUS, constants.BALL_RADIUS)
 
         self.aim_angle = 0  # Horizontal aim in degrees
+        self.kick_angle_rad = 0.0 # Added for arrow rendering
         self.game_state = "ready_to_kick" # Possible states: ready_to_kick, ball_kicked, goal_scored, past_goal_line
         self.goal_scored_timer = 0
         self.goal_scored_display_time = 2.0 # Seconds to display GOAL message (as per acceptance test)
@@ -48,6 +50,7 @@ class Game:
         self.power_bar.reset()
         # self.contact_selector.set_contact_offsets(0,0) # Optionally reset contact point
         self.aim_angle = 0
+        self.kick_angle_rad = 0.0 # Reset kick_angle_rad
         self.game_state = "ready_to_kick"
         print("Scene reset for new kick.")
 
@@ -71,8 +74,10 @@ class Game:
                     # Aiming with arrow keys
                     if event.key == pygame.K_LEFT:
                         self.aim_angle -= constants.ARROW_KEY_INCREMENT_DEG
+                        self.kick_angle_rad = math.radians(self.aim_angle) # Update kick_angle_rad
                     elif event.key == pygame.K_RIGHT:
                         self.aim_angle += constants.ARROW_KEY_INCREMENT_DEG
+                        self.kick_angle_rad = math.radians(self.aim_angle) # Update kick_angle_rad
                     
                     # Contact selector with WASD
                     self.contact_selector.handle_input(event) # Let contact_selector filter WASD itself
@@ -104,6 +109,20 @@ class Game:
     def update(self, dt):
         if self.game_state == "ready_to_kick":
             self.power_bar.update(dt) # Update power bar charging
+
+            # Check for automatic kick when power bar is full
+            if self.power_bar.is_fully_charged_for_kick():
+                power = self.power_bar.get_power_fraction() # Should be 1.0 as set in powerbar.py
+                cx, cz = self.contact_selector.get_contact_offsets()
+                print(f"Kicking (MAX POWER AUTO): Power={power*100:.0f}%, Aim={self.aim_angle:.1f}deg, Contact(X:{cx:.2f}, Z:{cz:.2f})")
+                self.ball.kick(
+                    power_fraction=power, 
+                    horizontal_aim_deg=self.aim_angle,
+                    pointer_x_offset=cx,
+                    pointer_z_offset=cz
+                )
+                self.game_state = "ball_kicked"
+                self.time_since_kick = 0.0
         
         elif self.game_state == "ball_kicked":
             self.ball.update(dt)
@@ -179,11 +198,65 @@ class Game:
         
         # Penalty Arc (more complex, skip for now for MVP)
 
+    def draw_kick_indicator_arrow(self, surface, camera):
+        if self.game_state != "ready_to_kick":
+            return
+
+        arrow_color = constants.RED
+        arrow_length = 1.5  # meters, adjust as needed
+        arrow_head_length = 0.5  # meters
+        arrow_head_angle_offset = math.pi / 6  # 30 degrees for barbs spread
+
+        # Arrow origin at ball's center on the Z=0 plane
+        ball_center_x = self.ball.world_pos.x
+        ball_center_y = self.ball.world_pos.y
+        
+        # Tip of the arrow's main shaft
+        # Based on ball.kick: Vx = V_horz * sin(theta_x_rad), Vy = -V_horz * cos(theta_x_rad)
+        # So, tip_dx = length * sin(angle), tip_dy = -length * cos(angle)
+        tip_x = ball_center_x + arrow_length * math.sin(self.kick_angle_rad)
+        tip_y = ball_center_y - arrow_length * math.cos(self.kick_angle_rad) # -Y is forward
+
+        # Project points to screen
+        # All points are on Z=0 plane
+        p_base_screen = camera.world_to_screen(ball_center_x, ball_center_y, 0)
+        p_tip_screen = camera.world_to_screen(tip_x, tip_y, 0)
+
+        if p_base_screen[0] < -constants.SCREEN_WIDTH or p_tip_screen[0] < -constants.SCREEN_WIDTH: # Basic off-screen check
+            return
+
+
+        # Draw main shaft
+        pygame.draw.line(surface, arrow_color, p_base_screen, p_tip_screen, 3)
+
+        # Calculate arrowhead barbs
+        # Angle of the main shaft
+        main_shaft_angle_rad = self.kick_angle_rad 
+
+        # Barb 1
+        barb1_angle_rad = main_shaft_angle_rad + math.pi - arrow_head_angle_offset
+        barb1_x = tip_x + arrow_head_length * math.sin(barb1_angle_rad)
+        barb1_y = tip_y - arrow_head_length * math.cos(barb1_angle_rad)
+        p_barb1_screen = camera.world_to_screen(barb1_x, barb1_y, 0)
+        pygame.draw.line(surface, arrow_color, p_tip_screen, p_barb1_screen, 3)
+
+        # Barb 2
+        barb2_angle_rad = main_shaft_angle_rad + math.pi + arrow_head_angle_offset
+        barb2_x = tip_x + arrow_head_length * math.sin(barb2_angle_rad)
+        barb2_y = tip_y - arrow_head_length * math.cos(barb2_angle_rad)
+        p_barb2_screen = camera.world_to_screen(barb2_x, barb2_y, 0)
+        pygame.draw.line(surface, arrow_color, p_tip_screen, p_barb2_screen, 3)
+
     def render(self):
         self.screen.fill(constants.GREEN)  # Basic pitch color
 
         self.draw_pitch_and_goal(self.screen, self.camera)
+        
+        # Draw kick indicator arrow when ready to kick, before the ball
+        self.draw_kick_indicator_arrow(self.screen, self.camera)
+
         self.ball.draw(self.screen, self.camera)
+
         self.power_bar.draw(self.screen)
         self.contact_selector.draw(self.screen)
 

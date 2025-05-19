@@ -10,6 +10,7 @@ class PowerBar:
         self.charge_time_per_segment = 0.25  # Seconds to fill one segment
         self.current_segment_charge_time = 0
         self.power_fraction_on_release = 0.0
+        self.kick_at_full_power = False # Flag to indicate automatic kick at full power
 
         self.border_color = constants.BLACK
         self.empty_color = constants.WHITE
@@ -27,7 +28,9 @@ class PowerBar:
     def stop_charging(self):
         if self.is_charging:
             self.is_charging = False
-            self.power_fraction_on_release = self.charge_level / self.segments
+            # Only set power fraction if not already set by reaching full charge
+            if not self.kick_at_full_power: 
+                self.power_fraction_on_release = self.charge_level / self.segments
             print(f"PowerBar: Stopped charging. Power fraction: {self.power_fraction_on_release:.2f}")
             return True # Indicates charging was active and stopped
         return False # Indicates it wasn't charging
@@ -42,6 +45,7 @@ class PowerBar:
         self.is_charging = False
         self.current_segment_charge_time = 0
         self.power_fraction_on_release = 0.0
+        self.kick_at_full_power = False # Reset flag
         print("PowerBar: Reset")
 
     def update(self, dt):
@@ -52,9 +56,10 @@ class PowerBar:
                 self.current_segment_charge_time = 0 
                 print(f"PowerBar: Charge level {self.charge_level}/{self.segments}")
                 if self.charge_level >= self.segments:
-                    self.is_charging = False # Auto-stop when full or let it hold full charge?
-                                            # For now, let it hold full charge, user releases to kick.
-                    print("PowerBar: Fully charged")
+                    self.is_charging = False 
+                    self.power_fraction_on_release = 1.0 # Full power
+                    self.kick_at_full_power = True # Signal for automatic kick
+                    print("PowerBar: Fully charged - KICK INITIATED")
         # If it fills up, is_charging remains true until space is released.
 
     def draw(self, screen):
@@ -71,6 +76,15 @@ class PowerBar:
             
             color = self.filled_color if i < self.charge_level else self.empty_color
             pygame.draw.rect(screen, color, seg_rect)
+
+    def is_fully_charged_for_kick(self):
+        """Checks if the bar is full and a kick should be triggered.
+        Resets the flag after checking to ensure one kick per full charge.
+        """
+        if self.kick_at_full_power:
+            self.kick_at_full_power = False # Reset after check
+            return True
+        return False
 
 # Example usage:
 if __name__ == '__main__':

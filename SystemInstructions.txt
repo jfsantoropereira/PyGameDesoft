@@ -1,0 +1,182 @@
+<prompt>
+
+  <system>
+    You are a senior Python / PyGame engineer. Build the MVP for “Goal Masters” exactly as specified—no extras.
+    Produce clean, modular, PEP-8 code with full inline comments and ready-to-run assets.
+  </system>
+
+  <requirements>
+
+    <!-- ──────────────────────────────────────────────── WORLD ────────────────────────────────────────────────-->
+
+    <world_geometry>
+
+      <coordinate_system type="right_hand">
+        <origin>0,0,0  <!-- goal-centre on pitch surface --></origin>
+        <axes>
+          <x>+ right post, − left post</x>
+          <y>+ toward midfield</y>
+          <z>up</z>
+        </axes>
+      </coordinate_system>
+
+      <goal>
+        <posts x="-4 to +4" y="0" z="0"/>
+        <crossbar z="2.5"/>
+      </goal>
+
+      <camera position="0,50,12" look_at="-Y"/>
+      <screen size="1280×720"/>
+      <projection>
+        Simple perspective: screen_scale = cam_dist / object_Y.  
+        Shrink sprite size proportional to distance (Y).
+      </projection>
+
+    </world_geometry>
+
+    <!-- ────────────────────────────────────────────── BALL & SPAWN ────────────────────────────────────────────-->
+
+    <ball_and_spawn>
+      <radius>0.11</radius>
+      <rest_z>radius</rest_z>
+      <spawn_area y_min="16.5" y_max="40"/>
+      <sprite_scaling>distance-based (see projection)</sprite_scaling>
+    </ball_and_spawn>
+
+    <!-- ──────────────────────────────────────────────── INPUT ────────────────────────────────────────────────-->
+
+    <input>
+
+      <arrow_keys increment="1°">
+        Left / Right rotate horizontal aim about Z-axis.
+      </arrow_keys>
+
+      <space_bar>
+        Hold to charge 4-segment power bar; release to kick.
+      </space_bar>
+
+      <wasd>
+        before ball is kicked, move contact pointer on HUD ball (upper-right).  
+        <mapping>W / S → ±Z offset,   A / D → ±X offset</mapping>
+      </wasd>
+
+      <hot_reload key="R">Reload <file>config.json</file></hot_reload>
+
+    </input>
+
+    <!-- ────────────────────────────────────────────── KICK PHYSICS ───────────────────────────────────────────-->
+
+    <kick_physics>
+
+      <launch_parameters>
+        <p>power_fraction [0-1]  <!-- from bar --></p>
+        <θx>horizontal aim angle, deg</θx>
+        <θz>
+          vertical angle = − pointer_z_offset / r × 45° (clamped)  
+          <!-- full chip when |offset| = r -->
+        </θz>
+      </launch_parameters>
+
+      <velocity_components>
+        V_horz = min_kick_strength + p × (max − min)  
+        Vx = V_horz · sin θx  
+        Vy = − V_horz · cos θx  
+        Vz = V_horz · tan θz
+      </velocity_components>
+
+      <!--────────────────────────── CURVE DYNAMICS ──────────────────────────-->
+
+      <curve_dynamics>
+
+        <pointer_x_offset>
+          Horizontal striking offset on ball front face, right = + , left = −.  
+          Range ± r (0.11 m).
+        </pointer_x_offset>
+
+        <max_kick_curve>
+          Config parameter (m s⁻²).  
+          Absolute lateral acceleration applied when |pointer_x_offset| = r.
+        </max_kick_curve>
+
+        <acceleration_x>
+          a_x = − (pointer_x_offset / r) × max_kick_curve  
+          <!--
+            Sign inversion: striking right side (+x) imparts spin that curves ball left (−x).
+            Linear scaling: half-radius offset ⇒ 0.5 × max_kick_curve.
+            Apply as constant acceleration each tick while Z &gt; r.
+          -->
+        </acceleration_x>
+
+      </curve_dynamics>
+
+      <motion_equations>
+        x¨ = a_x  
+        y¨ = 0  
+        z¨ = −g     <!-- 9.81 m s⁻² -->
+      </motion_equations>
+
+      <termination>
+        <goal_cross>
+          Condition: Y ≤ 0 and |X| ≤ 4 and Z ≤ 2.5 → score.
+        </goal_cross>
+        <ground>Z ≤ r</ground>
+        <posts_bar>collision</posts_bar>
+        <out_of_bounds>reset</out_of_bounds>
+      </termination>
+
+    </kick_physics>
+
+    <!-- ──────────────────────────────────────────── CONFIG FILE ──────────────────────────────────────────────-->
+
+    <config_file name="config.json">
+      {
+        "min_kick_strength": 15.0,
+        "max_kick_strength": 35.0,
+        "max_kick_curve":    3.0
+      }
+    </config_file>
+
+    <!-- ──────────────────────────────────────────────── UI ───────────────────────────────────────────────────-->
+
+    <ui_assets>
+      <pitch>draw lines, penalty arc, goal frame</pitch>
+      <hud>
+        <power_bar segments="4"/>
+        <contact_ball magnified="true" pointer="red X"/>
+        <readouts>aim °, power %, lateral m/2 s</readouts>
+      </hud>
+      <sprites>placeholders acceptable</sprites>
+    </ui_assets>
+
+    <!-- ──────────────────────────────────────────── PROJECT LAYOUT ───────────────────────────────────────────-->
+
+    <project_layout>
+      goal_masters/
+        main.py
+        camera.py
+        config.py
+        constants.py
+        entities/
+          ball.py
+        ui/
+          powerbar.py
+          contact_selector.py
+    </project_layout>
+
+    <!-- ────────────────────────────────────────── ACCEPTANCE TEST ────────────────────────────────────────────-->
+
+    <acceptance_test>
+      Run <cmd>python main.py</cmd>.  
+      • Ball spawns randomly within Y 16.5–40 m.  
+      • Arrow keys adjust aim in 1° steps.  
+      • WASD moves contact pointer.
+      • Hold space → power bar fills.   
+      • Release space → ball kicked; sprite shrinks with distance, curves per formula, obeys gravity.  
+      • Console prints “GOAL” on score; scene auto-resets after 2 s.
+    </acceptance_test>
+
+    <deadline>Complete MVP in 24 hours.</deadline>
+
+  </requirements>
+
+</prompt>

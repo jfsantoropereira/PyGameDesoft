@@ -1,0 +1,14 @@
+{
+  "min_kick_strength": 5.0,
+  "max_kick_strength": 30.0,
+  "max_kick_curve":    10.0,
+  "spawn_position_x":  0.0,
+  "spawn_position_y":  30.0,
+  "camera_position_x": 0.0,
+  "camera_position_y": 60.0,
+  "camera_height":     12.0,
+  "camera_fov_degrees": 50.0,
+  "camera_downlook_degrees": -15.0,
+  "ball_bounce_z_restitution": 0.5,
+  "ball_friction_xy_retention": 1.0
+}

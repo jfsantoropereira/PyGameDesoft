@@ -1,13 +1,14 @@
 import pygame
 import sys
 import math
+import json
+import os
 from . import constants
 from .config import config_manager
 from .camera import Camera
 from .entities.ball import Ball
 from .ui.powerbar import PowerBar
 from .ui.contact_selector import ContactSelector
-import os
 
 # Define HUD positions (can be moved to constants.py later if preferred)
 HUD_POWER_BAR_WIDTH = 200
@@ -26,17 +27,32 @@ COIN_MARGIN = 10  # Margin from the screen edges
 COIN_FONT_SIZE = 24  # Size of the coin count text
 
 class Game:
-    def __init__(self):
+    def __init__(self, selected_player="Elvis", player_config=None):
         pygame.init()
         self.screen = pygame.display.set_mode((constants.SCREEN_WIDTH, constants.SCREEN_HEIGHT))
         pygame.display.set_caption("Goal Masters")
         self.clock = pygame.time.Clock()
         self.running = True
 
+        # Player configuration
+        self.selected_player = selected_player
+        self.player_config = player_config or self.load_default_player_config()
+        self.apply_player_config()
+
+        # Game statistics
+        self.goals_scored = 0
+        self.attempts_made = 0
+        self.coins_earned = 0
+
         # Load coin image and set coin count
-        self.coin_image = pygame.image.load("imagens/moeda.png")
-        self.coin_image = pygame.transform.scale(self.coin_image, (COIN_SIZE, COIN_SIZE))
-        self.coin_count = 0
+        try:
+            coin_image_path = os.path.join(os.path.dirname(__file__), "..", "imagens", "moeda.png")
+            self.coin_image = pygame.image.load(coin_image_path)
+            self.coin_image = pygame.transform.scale(self.coin_image, (COIN_SIZE, COIN_SIZE))
+        except:
+            # If coin image is not found, create a simple yellow circle
+            self.coin_image = pygame.Surface((COIN_SIZE, COIN_SIZE), pygame.SRCALPHA)
+            pygame.draw.circle(self.coin_image, (255, 255, 0), (COIN_SIZE//2, COIN_SIZE//2), COIN_SIZE//2)
 
         self.camera = Camera()
         self.ball = Ball()
@@ -46,15 +62,36 @@ class Game:
 
         self.aim_angle = 0  # Horizontal aim in degrees
         self.kick_angle_rad = 0.0 # Added for arrow rendering
-        self.game_state = "ready_to_kick" # Possible states: ready_to_kick, ball_kicked, goal_scored, past_goal_line
+        self.game_state = "placing_ball" # Start with ball placement mode
         self.goal_scored_timer = 0
         self.goal_scored_display_time = 2.0 # Seconds to display GOAL message (as per acceptance test)
         self.past_line_timer = 0.0
         self.past_line_display_time = 3.0 # Seconds before reset when ball crosses goal line without scoring
         self.time_since_kick = 0.0 # Timer to track time since last kick. May not be needed with new reset logic.
 
-        print("Game Initialized")
+        print(f"Game Initialized with player: {selected_player}")
         print(f"Ball initial world position: {self.ball.world_pos}")
+
+    def load_default_player_config(self):
+        """Load default player configuration if not provided"""
+        default_config = {
+            "Elvis": {
+                "min_kick_strength": 15.0,
+                "max_kick_strength": 35.0,
+                "max_kick_curve": 3.0
+            }
+        }
+        return default_config
+
+    def apply_player_config(self):
+        """Apply the selected player's configuration to the game"""
+        if self.selected_player in self.player_config:
+            player_stats = self.player_config[self.selected_player]
+            # Update config manager with player-specific values
+            config_manager.settings['min_kick_strength'] = player_stats['min_kick_strength']
+            config_manager.settings['max_kick_strength'] = player_stats['max_kick_strength']
+            config_manager.settings['max_kick_curve'] = player_stats['max_kick_curve']
+            print(f"Applied {self.selected_player} config: Min Strength: {player_stats['min_kick_strength']}, Max Strength: {player_stats['max_kick_strength']}, Max Curve: {player_stats['max_kick_curve']}")
 
     def reset_for_kick(self):
         self.ball.reset()
@@ -62,8 +99,16 @@ class Game:
         # self.contact_selector.set_contact_offsets(0,0) # Optionally reset contact point
         self.aim_angle = 0
         self.kick_angle_rad = 0.0 # Reset kick_angle_rad
-        self.game_state = "ready_to_kick"
+        self.game_state = "placing_ball"  # Return to ball placement after reset
         print("Scene reset for new kick.")
+
+    def place_ball_at_position(self, world_x, world_y):
+        """Place the ball at the specified world coordinates"""
+        # Ensure ball is on the ground
+        self.ball.world_pos.x = world_x
+        self.ball.world_pos.y = world_y
+        self.ball.world_pos.z = constants.BALL_RADIUS
+        print(f"Ball placed at: X={world_x:.1f}, Y={world_y:.1f}, Z={constants.BALL_RADIUS}")
 
     def handle_events(self):
         for event in pygame.event.get():
@@ -76,12 +121,19 @@ class Game:
                 if event.key == pygame.K_r: # Config reload AND Manual Reset
                     print("R key pressed: Reloading config and resetting scene...")
                     config_manager.reload_config()
+                    self.apply_player_config()  # Reapply player config after reload
                     self.camera.reload_config() # Reload camera parameters
                     self.reset_for_kick() # Manually reset the game state
                     print(f"Game config reloaded. Min Strength: {config_manager.get_setting('min_kick_strength')}")
                     print("Scene manually reset.")
                 
-                if self.game_state == "ready_to_kick":
+                if self.game_state == "placing_ball":
+                    # Press Enter to confirm ball placement and move to aiming
+                    if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+                        self.game_state = "ready_to_kick"
+                        print("Ball placement confirmed. Ready to aim and kick.")
+                
+                elif self.game_state == "ready_to_kick":
                     # Aiming with arrow keys
                     if event.key == pygame.K_LEFT:
                         self.aim_angle -= constants.ARROW_KEY_INCREMENT_DEG
@@ -98,6 +150,22 @@ class Game:
                         if not self.ball.is_kicked:
                             self.power_bar.start_charging()
             
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if self.game_state == "placing_ball":
+                    # Place ball with mouse click
+                    if event.button == 1:  # Left mouse button
+                        mouse_x, mouse_y = pygame.mouse.get_pos()
+                        world_coords = self.camera.screen_to_world_on_ground(mouse_x, mouse_y)
+                        if world_coords:
+                            world_x, world_y = world_coords
+                            # Ensure the ball is placed within reasonable bounds
+                            if -20 <= world_x <= 20 and 16.5 <= world_y <= 50:
+                                self.place_ball_at_position(world_x, world_y)
+                            else:
+                                print(f"Ball placement out of bounds: X={world_x:.1f}, Y={world_y:.1f}")
+                        else:
+                            print("Cannot place ball at this location")
+            
             if event.type == pygame.KEYUP:
                 if self.game_state == "ready_to_kick":
                     if event.key == pygame.K_SPACE:
@@ -113,6 +181,7 @@ class Game:
                                 pointer_z_offset=cz
                             )
                             self.game_state = "ball_kicked"
+                            self.attempts_made += 1
                             self.time_since_kick = 0.0 # Reset timer on new kick
                             # Power bar is reset internally by its logic or by game state change
                             # self.power_bar.reset() # Will be reset when scene resets
@@ -133,6 +202,7 @@ class Game:
                     pointer_z_offset=cz
                 )
                 self.game_state = "ball_kicked"
+                self.attempts_made += 1
                 self.time_since_kick = 0.0
         
         elif self.game_state == "ball_kicked":
@@ -144,6 +214,8 @@ class Game:
                 if constants.GOAL_MIN_X <= self.ball.world_pos.x <= constants.GOAL_MAX_X and \
                    constants.BALL_RADIUS <= self.ball.world_pos.z <= constants.CROSSBAR_Z:
                     print("GOAL!")
+                    self.goals_scored += 1
+                    self.coins_earned += 10  # Award 10 coins per goal
                     self.game_state = "goal_scored"
                     self.goal_scored_timer = 0.0
                 else:
@@ -218,9 +290,10 @@ class Game:
         arrow_head_length = 0.5  # meters
         arrow_head_angle_offset = math.pi / 6  # 30 degrees for barbs spread
 
-        # Arrow origin at ball's center on the Z=0 plane
+        # Arrow origin at ball's center on the ground plane
         ball_center_x = self.ball.world_pos.x
         ball_center_y = self.ball.world_pos.y
+        ball_center_z = constants.BALL_RADIUS  # Draw arrow on ground plane
         
         # Tip of the arrow's main shaft
         # Based on ball.kick: Vx = V_horz * sin(theta_x_rad), Vy = -V_horz * cos(theta_x_rad)
@@ -229,13 +302,12 @@ class Game:
         tip_y = ball_center_y - arrow_length * math.cos(self.kick_angle_rad) # -Y is forward
 
         # Project points to screen
-        # All points are on Z=0 plane
-        p_base_screen = camera.world_to_screen(ball_center_x, ball_center_y, 0)
-        p_tip_screen = camera.world_to_screen(tip_x, tip_y, 0)
+        # All points are on ground plane at Z=BALL_RADIUS
+        p_base_screen = camera.world_to_screen(ball_center_x, ball_center_y, ball_center_z)
+        p_tip_screen = camera.world_to_screen(tip_x, tip_y, ball_center_z)
 
         if p_base_screen[0] < -constants.SCREEN_WIDTH or p_tip_screen[0] < -constants.SCREEN_WIDTH: # Basic off-screen check
             return
-
 
         # Draw main shaft
         pygame.draw.line(surface, arrow_color, p_base_screen, p_tip_screen, 3)
@@ -248,55 +320,108 @@ class Game:
         barb1_angle_rad = main_shaft_angle_rad + math.pi - arrow_head_angle_offset
         barb1_x = tip_x + arrow_head_length * math.sin(barb1_angle_rad)
         barb1_y = tip_y - arrow_head_length * math.cos(barb1_angle_rad)
-        p_barb1_screen = camera.world_to_screen(barb1_x, barb1_y, 0)
+        p_barb1_screen = camera.world_to_screen(barb1_x, barb1_y, ball_center_z)
         pygame.draw.line(surface, arrow_color, p_tip_screen, p_barb1_screen, 3)
 
         # Barb 2
         barb2_angle_rad = main_shaft_angle_rad + math.pi + arrow_head_angle_offset
         barb2_x = tip_x + arrow_head_length * math.sin(barb2_angle_rad)
         barb2_y = tip_y - arrow_head_length * math.cos(barb2_angle_rad)
-        p_barb2_screen = camera.world_to_screen(barb2_x, barb2_y, 0)
+        p_barb2_screen = camera.world_to_screen(barb2_x, barb2_y, ball_center_z)
         pygame.draw.line(surface, arrow_color, p_tip_screen, p_barb2_screen, 3)
 
     def render(self):
-        self.screen.fill(constants.GREEN)  # Basic pitch color
-
+        self.screen.fill(constants.DARK_GREEN)
+        
+        # Draw the game world
         self.draw_pitch_and_goal(self.screen, self.camera)
         
-        # Draw kick indicator arrow when ready to kick, before the ball
-        self.draw_kick_indicator_arrow(self.screen, self.camera)
+        # Draw the ball
+        ball_screen_pos = self.camera.world_to_screen(self.ball.world_pos.x, self.ball.world_pos.y, self.ball.world_pos.z)
+        
+        # Calculate scaled ball diameter using camera method
+        ball_diameter_world = constants.BALL_RADIUS * 2
+        scaled_diameter_pixels_w, _ = self.camera.get_sprite_display_size(
+            ball_diameter_world, 
+            ball_diameter_world, # Assuming ball sprite is square in terms of base units
+            self.ball.world_pos.x,
+            self.ball.world_pos.y,
+            self.ball.world_pos.z
+        )
+        ball_radius_pixels = max(1, int(scaled_diameter_pixels_w / 2)) # Ensure at least 1 pixel radius
+        
+        pygame.draw.circle(self.screen, constants.WHITE, ball_screen_pos, ball_radius_pixels)
 
-        self.ball.draw(self.screen, self.camera)
+        # Draw ball placement preview in placement mode
+        if self.game_state == "placing_ball":
+            mouse_x, mouse_y = pygame.mouse.get_pos()
+            world_coords = self.camera.screen_to_world_on_ground(mouse_x, mouse_y)
+            if world_coords:
+                world_x, world_y = world_coords
+                if -20 <= world_x <= 20 and 16.5 <= world_y <= 50:
+                    preview_screen_pos = self.camera.world_to_screen(world_x, world_y, constants.BALL_RADIUS)
+                    preview_radius_pixels = max(1, int(scaled_diameter_pixels_w / 2))
+                    # Draw semi-transparent preview ball
+                    preview_surface = pygame.Surface((preview_radius_pixels * 2, preview_radius_pixels * 2), pygame.SRCALPHA)
+                    pygame.draw.circle(preview_surface, (255, 255, 255, 128), (preview_radius_pixels, preview_radius_pixels), preview_radius_pixels)
+                    self.screen.blit(preview_surface, (preview_screen_pos[0] - preview_radius_pixels, preview_screen_pos[1] - preview_radius_pixels))
 
-        self.power_bar.draw(self.screen)
+        # Draw aim arrow during ready_to_kick
+        if self.game_state == "ready_to_kick":
+            self.draw_kick_indicator_arrow(self.screen, self.camera)
+
+        # Draw contact selector UI
         self.contact_selector.draw(self.screen)
 
-        # Draw coin and count in top-left corner
-        self.screen.blit(self.coin_image, (COIN_MARGIN, COIN_MARGIN))
-        font = pygame.font.Font(None, COIN_FONT_SIZE)
-        coin_text = font.render(str(self.coin_count), True, constants.WHITE)
-        self.screen.blit(coin_text, (COIN_MARGIN + COIN_SIZE + 5, COIN_MARGIN + (COIN_SIZE - COIN_FONT_SIZE) // 2))
+        # Draw power bar UI
+        self.power_bar.draw(self.screen)
 
-        if self.game_state == "goal_scored":
-            font = pygame.font.Font(None, 100)
-            text = font.render("GOAL!", True, constants.WHITE)
-            text_rect = text.get_rect(center=(constants.SCREEN_WIDTH // 2, constants.SCREEN_HEIGHT // 2))
-            self.screen.blit(text, text_rect)
-        
-        # HUD Readouts (placeholders)
+        # Font for text
         font = pygame.font.Font(None, 36)
-        aim_text = font.render(f"Aim: {self.aim_angle:.1f}°", True, constants.WHITE)
-        self.screen.blit(aim_text, (10, 10))
-        # Power readout can be part of power_bar or separate
-        # Lateral m/s^2 - this is self.ball.lateral_acceleration_x if kicked
-        lat_accel = self.ball.lateral_acceleration_x if self.ball.is_kicked else 0.0
-        lat_text = font.render(f"Curve Acc: {lat_accel:.2f} m/s²", True, constants.WHITE)
-        self.screen.blit(lat_text, (10, 50))
-        power_display = self.power_bar.charge_level / self.power_bar.segments if self.power_bar.is_charging or self.power_bar.charge_level > 0 else self.power_bar.power_fraction_on_release
-        if self.game_state == "ball_kicked": # show last used power if ball is kicked
-            power_display = self.power_bar.power_fraction_on_release
-        power_text = font.render(f"Power: {power_display*100:.0f}%", True, constants.WHITE)
-        self.screen.blit(power_text, (10, 90))
+
+        # Game state message overlay
+        if self.game_state == "goal_scored":
+            goal_text = font.render("GOAL! +10 coins", True, constants.YELLOW)
+            goal_rect = goal_text.get_rect(center=(constants.SCREEN_WIDTH // 2, constants.SCREEN_HEIGHT // 2))
+            self.screen.blit(goal_text, goal_rect)
+
+        elif self.game_state == "past_goal_line":
+            miss_text = font.render("MISS! Try again", True, constants.RED)
+            miss_rect = miss_text.get_rect(center=(constants.SCREEN_WIDTH // 2, constants.SCREEN_HEIGHT // 2))
+            self.screen.blit(miss_text, miss_rect)
+
+        # Player info
+        player_text = font.render(f"Player: {self.selected_player}", True, constants.WHITE)
+        self.screen.blit(player_text, (10, 10))
+
+        # Game statistics
+        stats_text = font.render(f"Goals: {self.goals_scored}  Attempts: {self.attempts_made}  Coins: {self.coins_earned}", True, constants.WHITE)
+        self.screen.blit(stats_text, (10, 50))
+
+        # Display coins earned in this session
+        coin_text = font.render(f"Coins this session: {self.coins_earned}", True, constants.YELLOW)
+        self.screen.blit(coin_text, (10, 90))
+
+        # Instructions
+        if self.game_state == "placing_ball":
+            instructions = [
+                "Click to place ball",
+                "Enter: Confirm placement", 
+                "ESC: Exit to Menu"
+            ]
+            for i, instruction in enumerate(instructions):
+                inst_text = font.render(instruction, True, constants.WHITE)
+                self.screen.blit(inst_text, (constants.SCREEN_WIDTH - 250, 10 + i * 30))
+        elif self.game_state == "ready_to_kick":
+            instructions = [
+                "Arrow Keys: Aim",
+                "WASD: Contact Point", 
+                "Space: Charge Power",
+                "ESC: Exit to Menu"
+            ]
+            for i, instruction in enumerate(instructions):
+                inst_text = font.render(instruction, True, constants.WHITE)
+                self.screen.blit(inst_text, (constants.SCREEN_WIDTH - 250, 10 + i * 30))
 
         # Ball live position readout
         pos_text = font.render(
@@ -317,8 +442,18 @@ class Game:
             self.render()
 
         print("Exiting Game")
-        pygame.quit()
-        sys.exit()
+        return {
+            'goals': self.goals_scored,
+            'attempts': self.attempts_made,
+            'coins_earned': self.coins_earned
+        }
+
+    def run_with_player(self, selected_player, player_config):
+        """Run the game with a specific player configuration"""
+        self.selected_player = selected_player
+        self.player_config = player_config
+        self.apply_player_config()
+        return self.run()
 
 if __name__ == '__main__':
     game = Game()

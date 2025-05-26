@@ -1,6 +1,7 @@
 import json
+import os
 
-CONFIG_FILE_PATH = "goal_masters/config.json"
+CONFIG_FILE_PATH = os.path.join(os.path.dirname(__file__), "config.json")
 
 class ConfigManager:
     def __init__(self):

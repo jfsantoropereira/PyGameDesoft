@@ -1,8 +1,11 @@
 import pygame
 import math
 import random
-import constants
-from config import config_manager
+# import constants
+# from config import config_manager
+
+from .. import constants
+from ..config import config_manager
 
 class Ball:
     def __init__(self, initial_position=None):

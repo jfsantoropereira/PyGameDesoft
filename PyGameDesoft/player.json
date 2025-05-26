@@ -1,0 +1,37 @@
+{
+  "Elvis": {
+    "min_kick_strength": 15.0,
+    "max_kick_strength": 35.0,
+    "max_kick_curve": 3.0,
+    "unlocked": true,
+    "price": 0
+  },
+  "Neymar": {
+    "min_kick_strength": 18.0,
+    "max_kick_strength": 40.0,
+    "max_kick_curve": 4.0,
+    "unlocked": false,
+    "price": 50
+  },
+  "Ronaldinho": {
+    "min_kick_strength": 20.0,
+    "max_kick_strength": 45.0,
+    "max_kick_curve": 5.0,
+    "unlocked": false,
+    "price": 100
+  },
+  "Roberto Carlos": {
+    "min_kick_strength": 25.0,
+    "max_kick_strength": 50.0,
+    "max_kick_curve": 6.0,
+    "unlocked": false,
+    "price": 200
+  },
+  "Juninho Pernambucano": {
+    "min_kick_strength": 30.0,
+    "max_kick_strength": 60.0,
+    "max_kick_curve": 8.0,
+    "unlocked": false,
+    "price": 500
+  }
+} 

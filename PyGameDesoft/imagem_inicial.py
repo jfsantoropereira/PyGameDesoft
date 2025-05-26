@@ -30,8 +30,40 @@ pygame.display.set_caption('Goal Masters')
 # ----- Inicia estruturas de dados
 game = True
 
+# ----- File paths
+PLAYER_DATA_FILE = os.path.join(os.path.dirname(__file__), 'player_data.json')
+PLAYER_CONFIG_FILE = os.path.join(os.path.dirname(__file__), 'player.json')
+
+# ----- Default data
+DEFAULT_PLAYER_DATA = {
+    'coins': 0,
+    'unlocked': ['Elvis'],
+    'selected': 'Elvis',
+    'total_goals': 0,
+    'total_attempts': 0
+}
+
+def load_player_data():
+    if not os.path.exists(PLAYER_DATA_FILE):
+        save_player_data(DEFAULT_PLAYER_DATA)
+        return DEFAULT_PLAYER_DATA.copy()
+    with open(PLAYER_DATA_FILE, 'r') as f:
+        return json.load(f)
+
+def save_player_data(data):
+    with open(PLAYER_DATA_FILE, 'w') as f:
+        json.dump(data, f, indent=2)
+
+def load_player_config():
+    with open(PLAYER_CONFIG_FILE, 'r') as f:
+        return json.load(f)
+
+# Load data
+player_data = load_player_data()
+player_config = load_player_config()
+
 # ----- Inicia assets
-imagem_original = pygame.image.load("PyGameDesoft/imagens/imagem inicial.png").convert()
+imagem_original = pygame.image.load(os.path.join(os.path.dirname(__file__), "imagens", "imagem inicial.png")).convert()
 image = pygame.transform.scale(imagem_original, (WIDTH, HEIGHT))
 
 # ----- Inicia fonte para o texto
@@ -67,19 +99,19 @@ class Button:
         return self.rect.collidepoint(pos)
 
 # ----- Função para tela da loja
-
 def store_screen():
+    global player_data, player_config
+    
     # Carrega imagens dos jogadores
-    elvis_img = pygame.image.load("PyGameDesoft/imagens/Elvis.png").convert_alpha()
-    neymar_img = pygame.image.load("PyGameDesoft/imagens/Neymar.png").convert_alpha()
-    ronaldinho_img = pygame.image.load("PyGameDesoft/imagens/Ronaldinho.png").convert_alpha()
-    roberto_img = pygame.image.load("PyGameDesoft/imagens/Roberto Carlos.png").convert_alpha()
-    juninho_img = pygame.image.load("PyGameDesoft/imagens/Juninho Pernambucano.png").convert_alpha()
-    cadeado_img = pygame.image.load("PyGameDesoft/imagens/cadeado.png").convert_alpha()
+    elvis_img = pygame.image.load(os.path.join(os.path.dirname(__file__), "imagens", "Elvis.png")).convert_alpha()
+    neymar_img = pygame.image.load(os.path.join(os.path.dirname(__file__), "imagens", "Neymar.png")).convert_alpha()
+    ronaldinho_img = pygame.image.load(os.path.join(os.path.dirname(__file__), "imagens", "Ronaldinho.png")).convert_alpha()
+    roberto_img = pygame.image.load(os.path.join(os.path.dirname(__file__), "imagens", "Roberto Carlos.png")).convert_alpha()
+    juninho_img = pygame.image.load(os.path.join(os.path.dirname(__file__), "imagens", "Juninho Pernambucano.png")).convert_alpha()
+    cadeado_img = pygame.image.load(os.path.join(os.path.dirname(__file__), "imagens", "cadeado.png")).convert_alpha()
 
     # Redimensiona as imagens para caberem na tela
     char_width, char_height = 200, 250
-    cadeado_size = 80
     elvis_img = pygame.transform.scale(elvis_img, (char_width, char_height))
     neymar_img = pygame.transform.scale(neymar_img, (char_width, char_height))
     ronaldinho_img = pygame.transform.scale(ronaldinho_img, (char_width, char_height))
@@ -92,11 +124,11 @@ def store_screen():
 
     # Dados dos personagens
     characters = [
-        {"name": "Elvis", "img": elvis_img, "pos": None, "price": 0},
-        {"name": "Neymar", "img": neymar_img, "pos": None, "price": 50},
-        {"name": "Ronaldinho", "img": ronaldinho_img, "pos": None, "price": 100},
-        {"name": "Roberto Carlos", "img": roberto_img, "pos": None, "price": 200},
-        {"name": "Juninho Pernambucano", "img": juninho_img, "pos": None, "price": 500},
+        {"name": "Elvis", "img": elvis_img, "pos": None},
+        {"name": "Neymar", "img": neymar_img, "pos": None},
+        {"name": "Ronaldinho", "img": ronaldinho_img, "pos": None},
+        {"name": "Roberto Carlos", "img": roberto_img, "pos": None},
+        {"name": "Juninho Pernambucano", "img": juninho_img, "pos": None},
     ]
 
     # Posições
@@ -109,7 +141,6 @@ def store_screen():
     characters[4]["pos"] = (WIDTH//2 + 200, y_bottom)
 
     running = True
-    global player_data
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -122,13 +153,14 @@ def store_screen():
                     for char in characters:
                         rect = pygame.Rect(char["pos"][0], char["pos"][1], char_width, char_height)
                         if rect.collidepoint(event.pos):
-                            if char["name"] in player_data['unlocked']:
-                                player_data['selected'] = char["name"]
+                            char_name = char["name"]
+                            if char_name in player_data['unlocked']:
+                                player_data['selected'] = char_name
                                 save_player_data(player_data)
-                            elif player_data['coins'] >= char["price"] and char["price"] > 0:
-                                player_data['coins'] -= char["price"]
-                                player_data['unlocked'].append(char["name"])
-                                player_data['selected'] = char["name"]
+                            elif player_data['coins'] >= player_config[char_name]["price"] and player_config[char_name]["price"] > 0:
+                                player_data['coins'] -= player_config[char_name]["price"]
+                                player_data['unlocked'].append(char_name)
+                                player_data['selected'] = char_name
                                 save_player_data(player_data)
 
         # Fundo igual ao da tela inicial
@@ -141,18 +173,22 @@ def store_screen():
 
         # Desenha personagens
         for char in characters:
+            char_name = char["name"]
             window.blit(char["img"], char["pos"])
-            if char["name"] != "Elvis":
+            
+            if player_config[char_name]["price"] > 0:
                 coin_image = pygame.image.load(os.path.join(os.path.dirname(__file__), 'imagens', 'moeda.png'))
                 coin_image = pygame.transform.scale(coin_image, (40, 40))
-                price_text = coin_font.render(str(char["price"]), True, (255, 255, 0))
+                price_text = coin_font.render(str(player_config[char_name]["price"]), True, (255, 255, 0))
                 window.blit(coin_image, (char["pos"][0] + 80, char["pos"][1] + 230))
                 window.blit(price_text, (char["pos"][0] + 125, char["pos"][1] + 245))
+            
             # Cadeado se não desbloqueado
-            if char["name"] not in player_data['unlocked']:
+            if char_name not in player_data['unlocked']:
                 window.blit(cadeado_img, char["pos"])
+            
             # Destaque se selecionado
-            if char["name"] == player_data['selected']:
+            if char_name == player_data['selected']:
                 pygame.draw.rect(window, (255, 215, 0), (char["pos"][0], char["pos"][1], char_width, char_height), 5)
 
         # Botão de voltar
@@ -199,7 +235,7 @@ def music_menu():
                         is_playing = False
                     else:
                         pygame.mixer.music.stop()
-                        pygame.mixer.music.load("PyGameDesoft/imagens/Bastile- Pompeii.mp3")
+                        pygame.mixer.music.load(os.path.join(os.path.dirname(__file__), "imagens", "Bastile- Pompeii.mp3"))
                         pygame.mixer.music.play(-1)
                         current_music = "pompeii"
                         is_playing = True
@@ -209,7 +245,7 @@ def music_menu():
                         is_playing = False
                     else:
                         pygame.mixer.music.stop()
-                        pygame.mixer.music.load("PyGameDesoft/imagens/MGMT - Kids (1.1x).mp3")
+                        pygame.mixer.music.load(os.path.join(os.path.dirname(__file__), "imagens", "MGMT - Kids (1.1x).mp3"))
                         pygame.mixer.music.play(-1)
                         current_music = "kids"
                         is_playing = True
@@ -219,7 +255,7 @@ def music_menu():
                         is_playing = False
                     else:
                         pygame.mixer.music.stop()
-                        pygame.mixer.music.load("PyGameDesoft/imagens/SAINT MOTEL - My Type.mp3")
+                        pygame.mixer.music.load(os.path.join(os.path.dirname(__file__), "imagens", "SAINT MOTEL - My Type.mp3"))
                         pygame.mixer.music.play(-1)
                         current_music = "mytype"
                         is_playing = True
@@ -245,11 +281,21 @@ while game:
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if store_button.is_clicked(event.pos):
                 store_screen()
+                # Reload player data in case it was updated in store
+                player_data = load_player_data()
             elif start_button.is_clicked(event.pos):
                 try:
-                    # Initialize and run the game
+                    # Initialize and run the game with selected player
                     game_instance = Game()
-                    game_instance.run()
+                    result = game_instance.run_with_player(player_data['selected'], player_config)
+                    
+                    # Update player data based on game result
+                    if result:
+                        player_data['coins'] += result.get('coins_earned', 0)
+                        player_data['total_goals'] += result.get('goals', 0)
+                        player_data['total_attempts'] += result.get('attempts', 0)
+                        save_player_data(player_data)
+                        
                 except Exception as e:
                     print(f"Error starting game: {e}")
             elif music_options_button.is_clicked(event.pos):
@@ -272,7 +318,7 @@ while game:
     coin_image = pygame.image.load(os.path.join(os.path.dirname(__file__), 'imagens', 'moeda.png'))
     coin_image = pygame.transform.scale(coin_image, (50, 50))
     window.blit(coin_image, (10, 10))
-    coin_text = coin_font.render(str(0), True, (255, 255, 0))
+    coin_text = coin_font.render(str(player_data['coins']), True, (255, 255, 0))
     window.blit(coin_text, (65, 35))
 
     # ----- Atualiza estado do jogo
@@ -280,24 +326,3 @@ while game:
 
 # ===== Finalização =====
 pygame.quit()
-
-PLAYER_DATA_FILE = os.path.join(os.path.dirname(__file__), 'player_data.json')
-
-DEFAULT_PLAYER_DATA = {
-    'coins': 0,
-    'unlocked': ['Elvis'],
-    'selected': 'Elvis'
-}
-
-def load_player_data():
-    if not os.path.exists(PLAYER_DATA_FILE):
-        save_player_data(DEFAULT_PLAYER_DATA)
-        return DEFAULT_PLAYER_DATA.copy()
-    with open(PLAYER_DATA_FILE, 'r') as f:
-        return json.load(f)
-
-def save_player_data(data):
-    with open(PLAYER_DATA_FILE, 'w') as f:
-        json.dump(data, f)
-
-player_data = load_player_data()

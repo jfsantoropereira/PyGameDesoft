@@ -1,5 +1,5 @@
 import pygame
-import constants
+from .. import constants
 
 class PowerBar:
     def __init__(self, x, y, width, height, segments=constants.POWER_BAR_SEGMENTS):

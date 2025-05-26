@@ -1,6 +1,6 @@
-import constants
+from . import constants
 import math
-from config import config_manager
+from .config import config_manager
 
 # Minimum effective depth for perspective scaling to avoid division by zero or extreme scaling.
 MIN_PERSPECTIVE_DEPTH = 0.1  # metres (reduced from 1.0 for closer interaction, must be > 0)
@@ -125,6 +125,48 @@ class Camera:
         
         return int(max(1, display_width)), int(max(1, display_height)) # Ensure at least 1x1 pixel
 
+    def screen_to_world_on_ground(self, screen_x, screen_y, ground_z=constants.BALL_RADIUS):
+        """
+        Convert screen coordinates to world coordinates on the ground plane (Z = ground_z).
+        This method directly inverts the projection equations from world_to_screen.
+        Returns (world_x, world_y) or None if the calculation is not possible.
+        """
+        cos_theta = self.cos_downlook
+        sin_theta = self.sin_downlook
+
+        # Screen-derived terms (normalized and scaled by focal length)
+        # S_x = (screen_x_displace) / focal_length
+        # S_y = (screen_y_displace) / focal_length
+        s_x_f = (screen_x - constants.SCREEN_WIDTH / 2) / self.focal_length_pixels
+        s_y_f = (constants.SCREEN_HEIGHT / 2 - screen_y) / self.focal_length_pixels # screen_y_displace for world_to_screen
+
+        # Relative Z of ground to camera
+        g_z_rel = ground_z - self.position[2]
+
+        # Denominator for W_y_rel calculation
+        # W_y_rel * (sin_theta + S_y_f * cos_theta) = -g_z_rel * (S_y_f * sin_theta + cos_theta)
+        denominator_w_y = sin_theta + s_y_f * cos_theta
+
+        if abs(denominator_w_y) < 1e-6: # Avoid division by zero; indicates ray parallel to ground in view
+            return None
+
+        # Relative world Y (W_y_rel = world_y - self.position[1])
+        w_y_rel = -g_z_rel * (s_y_f * sin_theta + cos_theta) / denominator_w_y
+        world_y = w_y_rel + self.position[1]
+
+        # Now calculate depth using the formula from _get_view_space_coords
+        # depth = W_y_rel * (-cos_theta) + g_z_rel * (-sin_theta)
+        depth = w_y_rel * (-cos_theta) + g_z_rel * (-sin_theta)
+
+        if depth < MIN_PERSPECTIVE_DEPTH: # Point is behind or too close to the camera
+            return None
+
+        # Relative world X (W_x_rel = world_x - self.position[0])
+        # W_x_rel = S_x_f * depth
+        w_x_rel = s_x_f * depth
+        world_x = w_x_rel + self.position[0]
+
+        return (world_x, world_y)
 
 if __name__ == '__main__':
     # Example Usage (assuming constants.py is accessible)

@@ -1,5 +1,5 @@
 import pygame
-import constants
+from .. import constants
 
 class ContactSelector:
     def __init__(self, hud_x, hud_y, hud_radius, ball_actual_radius):

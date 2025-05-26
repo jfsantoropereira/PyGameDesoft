@@ -1,12 +1,13 @@
 import pygame
 import sys
-import math # Added for math.radians, math.sin, math.cos
+import math
 from . import constants
 from .config import config_manager
 from .camera import Camera
 from .entities.ball import Ball
 from .ui.powerbar import PowerBar
 from .ui.contact_selector import ContactSelector
+import os
 
 # Define HUD positions (can be moved to constants.py later if preferred)
 HUD_POWER_BAR_WIDTH = 200
@@ -19,6 +20,11 @@ HUD_CONTACT_SELECTOR_MARGIN = 20
 HUD_CONTACT_SELECTOR_X = constants.SCREEN_WIDTH - HUD_CONTACT_SELECTOR_RADIUS - HUD_CONTACT_SELECTOR_MARGIN
 HUD_CONTACT_SELECTOR_Y = HUD_CONTACT_SELECTOR_RADIUS + HUD_CONTACT_SELECTOR_MARGIN
 
+# Coin display settings
+COIN_SIZE = 32  # Size of the coin image in pixels
+COIN_MARGIN = 10  # Margin from the screen edges
+COIN_FONT_SIZE = 24  # Size of the coin count text
+
 class Game:
     def __init__(self):
         pygame.init()
@@ -26,6 +32,11 @@ class Game:
         pygame.display.set_caption("Goal Masters")
         self.clock = pygame.time.Clock()
         self.running = True
+
+        # Load coin image and set coin count
+        self.coin_image = pygame.image.load("imagens/moeda.png")
+        self.coin_image = pygame.transform.scale(self.coin_image, (COIN_SIZE, COIN_SIZE))
+        self.coin_count = 0
 
         self.camera = Camera()
         self.ball = Ball()
@@ -259,6 +270,12 @@ class Game:
 
         self.power_bar.draw(self.screen)
         self.contact_selector.draw(self.screen)
+
+        # Draw coin and count in top-left corner
+        self.screen.blit(self.coin_image, (COIN_MARGIN, COIN_MARGIN))
+        font = pygame.font.Font(None, COIN_FONT_SIZE)
+        coin_text = font.render(str(self.coin_count), True, constants.WHITE)
+        self.screen.blit(coin_text, (COIN_MARGIN + COIN_SIZE + 5, COIN_MARGIN + (COIN_SIZE - COIN_FONT_SIZE) // 2))
 
         if self.game_state == "goal_scored":
             font = pygame.font.Font(None, 100)

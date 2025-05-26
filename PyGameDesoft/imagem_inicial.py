@@ -2,6 +2,21 @@
 # ----- Importa e inicia pacotes
 import pygame
 import pygame.mixer
+import os
+import sys
+import json
+
+# Add the parent directory to the Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.append(parent_dir)
+
+try:
+    from goal_masters.main import Game
+except ImportError as e:
+    print(f"Error importing game: {e}")
+    print("Make sure you're running the script from the correct directory")
+    sys.exit(1)
 
 pygame.init()
 pygame.mixer.init()
@@ -16,13 +31,16 @@ pygame.display.set_caption('Goal Masters')
 game = True
 
 # ----- Inicia assets
-imagem_original = pygame.image.load(r"C:\Users\Pe\Downloads\ChatGPT Image 14 de mai. de 2025, 08_12_27.png").convert()
+imagem_original = pygame.image.load("PyGameDesoft/imagens/imagem inicial.png").convert()
 image = pygame.transform.scale(imagem_original, (WIDTH, HEIGHT))
 
 # ----- Inicia fonte para o texto
 font = pygame.font.SysFont("Arial", 80)  # Fonte Arial, tamanho 80
 title_font = pygame.font.SysFont("Arial", 80)
 button_font = pygame.font.SysFont("Arial", 50)
+
+# Adicionar uma fonte menor para o contador de moedas
+coin_font = pygame.font.SysFont("Arial", 28)
 
 # ----- Cores
 WHITE = (255, 255, 255)
@@ -72,7 +90,26 @@ def store_screen():
     # Botão de voltar
     back_button = Button(50, 50, 200, 70, "Back", (180, 180, 180))
 
+    # Dados dos personagens
+    characters = [
+        {"name": "Elvis", "img": elvis_img, "pos": None, "price": 0},
+        {"name": "Neymar", "img": neymar_img, "pos": None, "price": 50},
+        {"name": "Ronaldinho", "img": ronaldinho_img, "pos": None, "price": 100},
+        {"name": "Roberto Carlos", "img": roberto_img, "pos": None, "price": 200},
+        {"name": "Juninho Pernambucano", "img": juninho_img, "pos": None, "price": 500},
+    ]
+
+    # Posições
+    y_top = 140
+    y_bottom = 370
+    characters[0]["pos"] = (WIDTH//2 - 250, y_top)
+    characters[1]["pos"] = (WIDTH//2 + 50, y_top)
+    characters[2]["pos"] = (WIDTH//2 - 400, y_bottom)
+    characters[3]["pos"] = (WIDTH//2 - 100, y_bottom)
+    characters[4]["pos"] = (WIDTH//2 + 200, y_bottom)
+
     running = True
+    global player_data
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -81,6 +118,18 @@ def store_screen():
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if back_button.is_clicked(event.pos):
                     running = False
+                else:
+                    for char in characters:
+                        rect = pygame.Rect(char["pos"][0], char["pos"][1], char_width, char_height)
+                        if rect.collidepoint(event.pos):
+                            if char["name"] in player_data['unlocked']:
+                                player_data['selected'] = char["name"]
+                                save_player_data(player_data)
+                            elif player_data['coins'] >= char["price"] and char["price"] > 0:
+                                player_data['coins'] -= char["price"]
+                                player_data['unlocked'].append(char["name"])
+                                player_data['selected'] = char["name"]
+                                save_player_data(player_data)
 
         # Fundo igual ao da tela inicial
         window.fill((0, 0, 0))
@@ -90,30 +139,31 @@ def store_screen():
         store_title = title_font.render("Character Store", True, BLACK)
         window.blit(store_title, (WIDTH // 2 - store_title.get_width() // 2, 50))
 
-        # Posições ajustadas para cima
-        y_top = 140
-        y_bottom = 370
-        # Linha de cima: Elvis, Neymar
-        elvis_pos = (WIDTH//2 - 250, y_top)
-        neymar_pos = (WIDTH//2 + 50, y_top)
-        window.blit(elvis_img, elvis_pos)
-        window.blit(neymar_img, neymar_pos)
-        # Linha de baixo: Ronaldinho, Roberto Carlos, Juninho Pernambucano
-        ronaldinho_pos = (WIDTH//2 - 400, y_bottom)
-        roberto_pos = (WIDTH//2 - 100, y_bottom)
-        juninho_pos = (WIDTH//2 + 200, y_bottom)
-        window.blit(ronaldinho_img, ronaldinho_pos)
-        window.blit(roberto_img, roberto_pos)
-        window.blit(juninho_img, juninho_pos)
-
-        # Desenha cadeado sobre todos exceto Elvis
-        window.blit(cadeado_img, neymar_pos)
-        window.blit(cadeado_img, ronaldinho_pos)
-        window.blit(cadeado_img, roberto_pos)
-        window.blit(cadeado_img, juninho_pos)
+        # Desenha personagens
+        for char in characters:
+            window.blit(char["img"], char["pos"])
+            if char["name"] != "Elvis":
+                coin_image = pygame.image.load(os.path.join(os.path.dirname(__file__), 'imagens', 'moeda.png'))
+                coin_image = pygame.transform.scale(coin_image, (40, 40))
+                price_text = coin_font.render(str(char["price"]), True, (255, 255, 0))
+                window.blit(coin_image, (char["pos"][0] + 80, char["pos"][1] + 230))
+                window.blit(price_text, (char["pos"][0] + 125, char["pos"][1] + 245))
+            # Cadeado se não desbloqueado
+            if char["name"] not in player_data['unlocked']:
+                window.blit(cadeado_img, char["pos"])
+            # Destaque se selecionado
+            if char["name"] == player_data['selected']:
+                pygame.draw.rect(window, (255, 215, 0), (char["pos"][0], char["pos"][1], char_width, char_height), 5)
 
         # Botão de voltar
         back_button.draw(window)
+
+        # Exibe moedas do jogador
+        coin_image = pygame.image.load(os.path.join(os.path.dirname(__file__), 'imagens', 'moeda.png'))
+        coin_image = pygame.transform.scale(coin_image, (50, 50))
+        window.blit(coin_image, (10, 10))
+        coin_text = coin_font.render(str(player_data['coins']), True, (255, 255, 0))
+        window.blit(coin_text, (65, 35))
 
         pygame.display.update()
 
@@ -196,7 +246,12 @@ while game:
             if store_button.is_clicked(event.pos):
                 store_screen()
             elif start_button.is_clicked(event.pos):
-                print("Start button clicked!")
+                try:
+                    # Initialize and run the game
+                    game_instance = Game()
+                    game_instance.run()
+                except Exception as e:
+                    print(f"Error starting game: {e}")
             elif music_options_button.is_clicked(event.pos):
                 music_menu()
 
@@ -213,8 +268,36 @@ while game:
     store_button.draw(window)
     music_options_button.draw(window)
 
+    # ----- Desenhar a moeda e o contador de moedas
+    coin_image = pygame.image.load(os.path.join(os.path.dirname(__file__), 'imagens', 'moeda.png'))
+    coin_image = pygame.transform.scale(coin_image, (50, 50))
+    window.blit(coin_image, (10, 10))
+    coin_text = coin_font.render(str(0), True, (255, 255, 0))
+    window.blit(coin_text, (65, 35))
+
     # ----- Atualiza estado do jogo
     pygame.display.update()  # Mostra o novo frame para o jogador
 
 # ===== Finalização =====
 pygame.quit()
+
+PLAYER_DATA_FILE = os.path.join(os.path.dirname(__file__), 'player_data.json')
+
+DEFAULT_PLAYER_DATA = {
+    'coins': 0,
+    'unlocked': ['Elvis'],
+    'selected': 'Elvis'
+}
+
+def load_player_data():
+    if not os.path.exists(PLAYER_DATA_FILE):
+        save_player_data(DEFAULT_PLAYER_DATA)
+        return DEFAULT_PLAYER_DATA.copy()
+    with open(PLAYER_DATA_FILE, 'r') as f:
+        return json.load(f)
+
+def save_player_data(data):
+    with open(PLAYER_DATA_FILE, 'w') as f:
+        json.dump(data, f)
+
+player_data = load_player_data()

@@ -1,6 +1,6 @@
-from . import constants
+import constants
 import math
-from .config import config_manager
+from config import config_manager
 
 # Minimum effective depth for perspective scaling to avoid division by zero or extreme scaling.
 MIN_PERSPECTIVE_DEPTH = 0.1  # metres (reduced from 1.0 for closer interaction, must be > 0)

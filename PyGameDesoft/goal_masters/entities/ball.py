@@ -1,8 +1,8 @@
 import pygame
 import math
 import random
-from .. import constants  # Assuming this file is in goal_masters/entities/
-from ..config import config_manager
+import constants
+from config import config_manager
 
 class Ball:
     def __init__(self, initial_position=None):

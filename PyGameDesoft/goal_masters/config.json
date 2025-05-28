@@ -9,11 +9,13 @@
   "camera_height":     8,
   "camera_fov_degrees": 60,
   "camera_downlook_degrees": -15,
-  "ball_bounce_z_restitution": 0.5,
-  "ball_friction_xy_retention": 0.5,
+  "ball_bounce_z_restitution": 0.7,
+  "ball_friction_xy_retention": 0.99,
   "knuckleball_threshold_speed": 25.0,
   "knuckleball_min_acceleration": 0.0,
   "knuckleball_max_acceleration": 2.0,
   "knuckleball_min_change_interval": 0.0,
-  "knuckleball_max_change_interval": 1.0
+  "knuckleball_max_change_interval": 1.0,
+  "goalkeeper_max_speed": 7.0,
+  "goalkeeper_max_acceleration": 10.0
 }

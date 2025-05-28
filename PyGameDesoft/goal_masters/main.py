@@ -7,6 +7,7 @@ from . import constants
 from .config import config_manager
 from .camera import Camera
 from .entities.ball import Ball
+from .entities.goalkeeper import Goalkeeper
 from .ui.powerbar import PowerBar
 from .ui.contact_selector import ContactSelector
 
@@ -54,8 +55,18 @@ class Game:
             self.coin_image = pygame.Surface((COIN_SIZE, COIN_SIZE), pygame.SRCALPHA)
             pygame.draw.circle(self.coin_image, (255, 255, 0), (COIN_SIZE//2, COIN_SIZE//2), COIN_SIZE//2)
 
+        # Load stadium crowd image
+        try:
+            crowd_image_path = os.path.join(os.path.dirname(__file__), "..", "imagens", "Stadium Crowd Wide from Yashin Request.png")
+            self.stadium_crowd_image = pygame.image.load(crowd_image_path).convert_alpha()
+            print(f"Stadium crowd image loaded: {self.stadium_crowd_image.get_size()}")
+        except Exception as e:
+            print(f"Failed to load stadium crowd image: {e}")
+            self.stadium_crowd_image = None
+
         self.camera = Camera()
         self.ball = Ball()
+        self.goalkeeper = Goalkeeper()
         self.power_bar = PowerBar(HUD_POWER_BAR_X, HUD_POWER_BAR_Y, HUD_POWER_BAR_WIDTH, HUD_POWER_BAR_HEIGHT)
         self.contact_selector = ContactSelector(HUD_CONTACT_SELECTOR_X, HUD_CONTACT_SELECTOR_Y, 
                                               HUD_CONTACT_SELECTOR_RADIUS, constants.BALL_RADIUS)
@@ -68,6 +79,26 @@ class Game:
         self.past_line_timer = 0.0
         self.past_line_display_time = 3.0 # Seconds before reset when ball crosses goal line without scoring
         self.time_since_kick = 0.0 # Timer to track time since last kick. May not be needed with new reset logic.
+        self.kick_y_position = 0.0 # Store Y-coordinate of the ball at the time of kick
+        self.last_awarded_coins = 0 # Store the amount of coins awarded for the last goal
+
+        # Load goal sound
+        try:
+            goal_sound_path = os.path.join(os.path.dirname(__file__), "..", "imagens", "galvao-bueno-olha-o-gol.mp3")
+            self.goal_sound = pygame.mixer.Sound(goal_sound_path)
+            print("Goal sound loaded successfully.")
+        except pygame.error as e:
+            print(f"Failed to load goal sound: {e}")
+            self.goal_sound = None
+
+        # Load kick sound
+        try:
+            kick_sound_path = os.path.join(os.path.dirname(__file__), "..", "imagens", "ChuteGoal.mp3")
+            self.kick_sound = pygame.mixer.Sound(kick_sound_path)
+            print("Kick sound loaded successfully.")
+        except pygame.error as e:
+            print(f"Failed to load kick sound: {e}")
+            self.kick_sound = None
 
         print(f"Game Initialized with player: {selected_player}")
         print(f"Ball initial world position: {self.ball.world_pos}")
@@ -95,6 +126,7 @@ class Game:
 
     def reset_for_kick(self):
         self.ball.reset()
+        self.goalkeeper.reset()
         self.power_bar.reset()
         # self.contact_selector.set_contact_offsets(0,0) # Optionally reset contact point
         self.aim_angle = 0
@@ -173,7 +205,10 @@ class Game:
                             power = self.power_bar.get_power_fraction()
                             cx, cz = self.contact_selector.get_contact_offsets()
                             
-                            print(f"Kicking: Power={power*100:.0f}%, Aim={self.aim_angle:.1f}deg, Contact(X:{cx:.2f}, Z:{cz:.2f})")
+                            self.kick_y_position = self.ball.world_pos.y # Record Y-pos at kick
+                            print(f"Kicking from Y={self.kick_y_position:.2f}m: Power={power*100:.0f}%, Aim={self.aim_angle:.1f}deg, Contact(X:{cx:.2f}, Z:{cz:.2f})")
+                            if self.kick_sound:
+                                self.kick_sound.play()
                             self.ball.kick(
                                 power_fraction=power,
                                 horizontal_aim_deg=self.aim_angle,
@@ -194,7 +229,10 @@ class Game:
             if self.power_bar.is_fully_charged_for_kick():
                 power = self.power_bar.get_power_fraction() # Should be 1.0 as set in powerbar.py
                 cx, cz = self.contact_selector.get_contact_offsets()
-                print(f"Kicking (MAX POWER AUTO): Power={power*100:.0f}%, Aim={self.aim_angle:.1f}deg, Contact(X:{cx:.2f}, Z:{cz:.2f})")
+                self.kick_y_position = self.ball.world_pos.y # Record Y-pos at kick
+                print(f"Kicking (MAX POWER AUTO) from Y={self.kick_y_position:.2f}m: Power={power*100:.0f}%, Aim={self.aim_angle:.1f}deg, Contact(X:{cx:.2f}, Z:{cz:.2f})")
+                if self.kick_sound:
+                    self.kick_sound.play()
                 self.ball.kick(
                     power_fraction=power, 
                     horizontal_aim_deg=self.aim_angle,
@@ -207,7 +245,15 @@ class Game:
         
         elif self.game_state == "ball_kicked":
             self.ball.update(dt)
+            self.goalkeeper.update(dt, self.ball)
             self.time_since_kick += dt # Increment time since kick - still useful for other potential logic
+            
+            # Check for goalkeeper save BEFORE checking for goals
+            if self.goalkeeper.check_save(self.ball):
+                if self.goalkeeper.save_ball(self.ball):
+                    # Save was successful, don't check for goals this frame
+                    return
+            
             # Check if ball crossed goal line (y<=0)
             if self.ball.world_pos.y <= 0:
                 # Determine if it's a goal
@@ -215,9 +261,21 @@ class Game:
                    constants.BALL_RADIUS <= self.ball.world_pos.z <= constants.CROSSBAR_Z:
                     print("GOAL!")
                     self.goals_scored += 1
-                    self.coins_earned += 10  # Award 10 coins per goal
+                    
+                    # Determine coins based on kick distance
+                    if self.kick_y_position > 40:
+                        self.last_awarded_coins = 40
+                    elif self.kick_y_position > 30: # and <= 40 implied
+                        self.last_awarded_coins = 20
+                    else: # Covers 16.5 < Y <= 30 and any other valid goal case
+                        self.last_awarded_coins = 10
+                        
+                    self.coins_earned += self.last_awarded_coins
+                    print(f"Awarded {self.last_awarded_coins} coins for goal from Y={self.kick_y_position:.2f}m")
                     self.game_state = "goal_scored"
                     self.goal_scored_timer = 0.0
+                    if self.goal_sound:
+                        self.goal_sound.play()
                 else:
                     # Only transition to past_goal_line if not already in that state or goal_scored state
                     if self.game_state == "ball_kicked": 
@@ -240,7 +298,88 @@ class Game:
                 self.reset_for_kick()
 
     def draw_pitch_and_goal(self, screen, camera):
-        # Goal Frame (Simplified 3D lines projected)
+        # Essential pitch markings around the goal area only
+        PENALTY_AREA_LENGTH = 16.5  # meters from goal line (corrected from 11.0)
+        PENALTY_ARC_RADIUS = 9.15  # meters
+        
+        # Calculate boundaries for penalty area
+        goal_line_y = 0
+        penalty_area_left_x = -16.5  # Half of penalty area width (33m total)
+        penalty_area_right_x = 16.5
+        
+        line_color = constants.WHITE
+        line_thickness = 2
+        
+        # Helper function to draw a line at ground level (z=0)
+        def draw_ground_line(start_x, start_y, end_x, end_y, thickness=line_thickness):
+            start_screen = camera.world_to_screen(start_x, start_y, 0)
+            end_screen = camera.world_to_screen(end_x, end_y, 0)
+            pygame.draw.line(screen, line_color, start_screen, end_screen, thickness)
+        
+        # Helper function to draw an arc at ground level
+        def draw_ground_arc(center_x, center_y, radius, start_angle, end_angle, thickness=line_thickness):
+            # Draw arc by approximating with line segments
+            num_segments = 20
+            angle_step = (end_angle - start_angle) / num_segments
+            
+            for i in range(num_segments):
+                angle1 = start_angle + i * angle_step
+                angle2 = start_angle + (i + 1) * angle_step
+                
+                x1 = center_x + radius * math.cos(angle1)
+                y1 = center_y + radius * math.sin(angle1)
+                x2 = center_x + radius * math.cos(angle2)
+                y2 = center_y + radius * math.sin(angle2)
+                
+                draw_ground_line(x1, y1, x2, y2, thickness)
+        
+        # 1. GOAL LINE (back line)
+        draw_ground_line(-25, goal_line_y, 25, goal_line_y, 3) # Updated to x=-25 to x=25
+        
+        # NEW: Side Lines
+        # Adjust far y-coordinate to be further from camera to avoid projection issues
+        # Camera is at y=65. Previous 64.9 was too close.
+        side_line_far_y = 45.0 
+        # Left side line
+        draw_ground_line(-25, goal_line_y, -25, side_line_far_y, 3)
+        # Right side line
+        draw_ground_line(25, goal_line_y, 25, side_line_far_y, 3)
+        
+        # 2. PENALTY AREA (penalty box)
+        # Left side of penalty box
+        draw_ground_line(penalty_area_left_x, goal_line_y, penalty_area_left_x, PENALTY_AREA_LENGTH)
+        # Right side of penalty box
+        draw_ground_line(penalty_area_right_x, goal_line_y, penalty_area_right_x, PENALTY_AREA_LENGTH)
+        # Top of penalty box
+        draw_ground_line(penalty_area_left_x, PENALTY_AREA_LENGTH, penalty_area_right_x, PENALTY_AREA_LENGTH)
+        
+        # 3. PENALTY ARC - the big semicircle at the edge of the penalty area
+        penalty_spot_distance = 11.0  # meters from goal line
+        # Calculate angle so arc tips touch penalty box edge at y=16.5m
+        # Arc center at (0, 11), radius 9.15m, box edge at y=16.5m
+        # Distance from arc center to box edge: 16.5 - 11 = 5.5m
+        # cos(θ) = 5.5 / 9.15, so θ = arccos(5.5/9.15)
+        arc_half_angle = math.acos(5.5 / PENALTY_ARC_RADIUS)
+        start_angle = math.pi/2 - arc_half_angle
+        end_angle = math.pi/2 + arc_half_angle
+        draw_ground_arc(0, penalty_spot_distance, PENALTY_ARC_RADIUS, start_angle, end_angle)
+        
+        # 4. PENALTY SPOT
+        penalty_spot_radius = 0.11  # meters (as specified by user)
+        penalty_spot_screen = camera.world_to_screen(0, penalty_spot_distance, 0)
+        # Use proper rendering logic like the ball
+        spot_diameter_world = penalty_spot_radius * 2
+        scaled_diameter_pixels, _ = camera.get_sprite_display_size(
+            spot_diameter_world, 
+            spot_diameter_world,
+            0,  # x position
+            penalty_spot_distance,  # y position  
+            0   # z position (on ground)
+        )
+        spot_radius_pixels = max(1, int(scaled_diameter_pixels / 2))
+        pygame.draw.circle(screen, line_color, penalty_spot_screen, spot_radius_pixels)
+        
+        # 5. GOAL FRAME (keeping the existing goal posts and crossbar)
         # Posts (at Y=0, Z=0 to Z=CROSSBAR_Z)
         goal_posts_world = [
             (constants.GOAL_MIN_X, 0, 0), (constants.GOAL_MIN_X, 0, constants.CROSSBAR_Z),
@@ -251,35 +390,20 @@ class Game:
             (constants.GOAL_MIN_X, 0, constants.CROSSBAR_Z), (constants.GOAL_MAX_X, 0, constants.CROSSBAR_Z)
         ]
 
-        goal_line_color = constants.WHITE
+        goal_post_color = constants.WHITE
         # Draw Posts
         p1_start_screen = camera.world_to_screen(*goal_posts_world[0])
         p1_end_screen = camera.world_to_screen(*goal_posts_world[1])
-        pygame.draw.line(screen, goal_line_color, p1_start_screen, p1_end_screen, 5)
+        pygame.draw.line(screen, goal_post_color, p1_start_screen, p1_end_screen, 5)
         
         p2_start_screen = camera.world_to_screen(*goal_posts_world[2])
         p2_end_screen = camera.world_to_screen(*goal_posts_world[3])
-        pygame.draw.line(screen, goal_line_color, p2_start_screen, p2_end_screen, 5)
+        pygame.draw.line(screen, goal_post_color, p2_start_screen, p2_end_screen, 5)
         
         # Draw Crossbar
         cb_start_screen = camera.world_to_screen(*goal_crossbar_world[0])
         cb_end_screen = camera.world_to_screen(*goal_crossbar_world[1])
-        pygame.draw.line(screen, goal_line_color, cb_start_screen, cb_end_screen, 5)
-
-        # Pitch Lines (example: goal line and a center circle)
-        # Goal line (Y=0, between X_MIN and X_MAX at Z=0)
-        goal_line_start_world = (constants.GOAL_MIN_X - 2, 0, 0) # Extend slightly for visibility
-        goal_line_end_world = (constants.GOAL_MAX_X + 2, 0, 0)
-        pygame.draw.line(screen, goal_line_color, camera.world_to_screen(*goal_line_start_world), camera.world_to_screen(*goal_line_end_world), 3)
-        
-        # Center circle (on ground Z=BALL_RADIUS, at Y=some_midfield_y, radius e.g. 9.15m)
-        # Drawing a projected circle is more complex; for now, a line at midfield.
-        midfield_line_y = 25 # Arbitrary midfield Y
-        midfield_start_world = (-15, midfield_line_y, 0)
-        midfield_end_world = (15, midfield_line_y, 0)
-        pygame.draw.line(screen, goal_line_color, camera.world_to_screen(*midfield_start_world), camera.world_to_screen(*midfield_end_world), 2)
-        
-        # Penalty Arc (more complex, skip for now for MVP)
+        pygame.draw.line(screen, goal_post_color, cb_start_screen, cb_end_screen, 5)
 
     def draw_kick_indicator_arrow(self, surface, camera):
         if self.game_state != "ready_to_kick":
@@ -330,13 +454,100 @@ class Game:
         p_barb2_screen = camera.world_to_screen(barb2_x, barb2_y, ball_center_z)
         pygame.draw.line(surface, arrow_color, p_tip_screen, p_barb2_screen, 3)
 
+    def draw_stadium_crowd(self, screen, camera):
+        """Draw the stadium crowd image behind the goal as a 2x2 tile grid"""
+        if not self.stadium_crowd_image:
+            return
+        
+        # Base position for the 2x2 grid
+        base_crowd_world_x = 0  # Centered
+        base_crowd_world_y = -5 # 5m behind goal
+        base_crowd_bottom_z = 2 # Bottom of the lowest tiles 2m above ground
+        
+        # Get the original image dimensions
+        original_tile_pixel_width, original_tile_pixel_height = self.stadium_crowd_image.get_rect().size
+        
+        # Define the world width of a single tile
+        tile_world_width = 40  # meters wide for one tile
+        # Maintain aspect ratio for the height of one tile
+        tile_world_height = original_tile_pixel_height * (tile_world_width / original_tile_pixel_width)
+        
+        for row in range(2):  # 0 for bottom row, 1 for top row
+            for col in range(2):  # 0 for left column, 1 for right column
+                
+                # Calculate center X for the current tile
+                # The grid is centered at base_crowd_world_x.
+                # If col=0, center is base_crowd_world_x - tile_world_width/2
+                # If col=1, center is base_crowd_world_x + tile_world_width/2
+                current_tile_center_x = base_crowd_world_x - (tile_world_width / 2) + (col * tile_world_width)
+                
+                # Calculate bottom Z for the current tile
+                current_tile_bottom_z = base_crowd_bottom_z + (row * tile_world_height)
+                current_tile_top_z = current_tile_bottom_z + tile_world_height
+
+                # Get screen positions for the four corners of the current tile
+                bottom_left_screen = camera.world_to_screen(
+                    current_tile_center_x - tile_world_width / 2, base_crowd_world_y, current_tile_bottom_z
+                )
+                bottom_right_screen = camera.world_to_screen(
+                    current_tile_center_x + tile_world_width / 2, base_crowd_world_y, current_tile_bottom_z
+                )
+                top_left_screen = camera.world_to_screen(
+                    current_tile_center_x - tile_world_width / 2, base_crowd_world_y, current_tile_top_z
+                )
+                top_right_screen = camera.world_to_screen(
+                    current_tile_center_x + tile_world_width / 2, base_crowd_world_y, current_tile_top_z
+                )
+                
+                # Basic culling for the current tile (can be improved)
+                # If all x are < -100 or all x > SCREEN_WIDTH + 100, skip.
+                all_x_coords = [bottom_left_screen[0], bottom_right_screen[0], top_left_screen[0], top_right_screen[0]]
+                if all(x < -100 for x in all_x_coords) or all(x > constants.SCREEN_WIDTH + 100 for x in all_x_coords):
+                    continue 
+                # Similar check for y (though less likely for a wide background)
+                all_y_coords = [bottom_left_screen[1], bottom_right_screen[1], top_left_screen[1], top_right_screen[1]]
+                if all(y < -100 for y in all_y_coords) or all(y > constants.SCREEN_HEIGHT + 100 for y in all_y_coords):
+                    continue
+
+                # Calculate apparent screen width and height for this tile
+                # This uses the projected bottom corners for width, and projected left corners for height.
+                # More robust methods might consider all four points or use affine transforms for non-rectangular quads.
+                
+                # Approximate screen width based on the bottom edge of the tile
+                app_screen_width = abs(bottom_right_screen[0] - bottom_left_screen[0])
+                # Approximate screen height based on the left edge of the tile
+                app_screen_height = abs(bottom_left_screen[1] - top_left_screen[1])
+
+                # Ensure minimum size of 1x1 pixel to avoid errors with scale
+                scaled_width = max(1, int(app_screen_width))
+                scaled_height = max(1, int(app_screen_height))
+
+                if scaled_width > 0 and scaled_height > 0:
+                    try:
+                        scaled_tile_image = pygame.transform.scale(
+                            self.stadium_crowd_image, 
+                            (scaled_width, scaled_height)
+                        )
+                        
+                        # Blit position is the top-left most point of the projected quad
+                        blit_x = min(top_left_screen[0], bottom_left_screen[0], top_right_screen[0], bottom_right_screen[0])
+                        blit_y = min(top_left_screen[1], bottom_left_screen[1], top_right_screen[1], bottom_right_screen[1])
+                        
+                        screen.blit(scaled_tile_image, (blit_x, blit_y))
+                    except pygame.error as e:
+                        print(f"Error scaling or blitting crowd tile: {e}. Scaled size: ({scaled_width}, {scaled_height})")
+                        pass # Continue if one tile fails
+
     def render(self):
         self.screen.fill(constants.DARK_GREEN)
+        
+        # Draw the stadium crowd first (behind everything)
+        self.draw_stadium_crowd(self.screen, self.camera)
         
         # Draw the game world
         self.draw_pitch_and_goal(self.screen, self.camera)
         
-        # Draw the ball
+        # Draw the ball and goalkeeper in proper depth order (higher Y = farther = render first)
         ball_screen_pos = self.camera.world_to_screen(self.ball.world_pos.x, self.ball.world_pos.y, self.ball.world_pos.z)
         
         # Calculate scaled ball diameter using camera method
@@ -350,7 +561,15 @@ class Game:
         )
         ball_radius_pixels = max(1, int(scaled_diameter_pixels_w / 2)) # Ensure at least 1 pixel radius
         
-        pygame.draw.circle(self.screen, constants.WHITE, ball_screen_pos, ball_radius_pixels)
+        # Render in depth order: farther objects (higher Y) first, closer objects (lower Y) last
+        if self.ball.world_pos.y > self.goalkeeper.world_pos.y:
+            # Ball is farther, draw ball first then goalkeeper
+            pygame.draw.circle(self.screen, constants.WHITE, ball_screen_pos, ball_radius_pixels)
+            self.goalkeeper.draw(self.screen, self.camera)
+        else:
+            # Goalkeeper is farther, draw goalkeeper first then ball
+            self.goalkeeper.draw(self.screen, self.camera)
+            pygame.draw.circle(self.screen, constants.WHITE, ball_screen_pos, ball_radius_pixels)
 
         # Draw ball placement preview in placement mode
         if self.game_state == "placing_ball":
@@ -376,12 +595,12 @@ class Game:
         # Draw power bar UI
         self.power_bar.draw(self.screen)
 
-        # Font for text
         font = pygame.font.Font(None, 36)
 
         # Game state message overlay
         if self.game_state == "goal_scored":
-            goal_text = font.render("GOAL! +10 coins", True, constants.YELLOW)
+            goal_text_message = f"GOAL! +{self.last_awarded_coins} coins"
+            goal_text = font.render(goal_text_message, True, constants.YELLOW)
             goal_rect = goal_text.get_rect(center=(constants.SCREEN_WIDTH // 2, constants.SCREEN_HEIGHT // 2))
             self.screen.blit(goal_text, goal_rect)
 
@@ -390,46 +609,50 @@ class Game:
             miss_rect = miss_text.get_rect(center=(constants.SCREEN_WIDTH // 2, constants.SCREEN_HEIGHT // 2))
             self.screen.blit(miss_text, miss_rect)
 
-        # Player info
-        player_text = font.render(f"Player: {self.selected_player}", True, constants.WHITE)
-        self.screen.blit(player_text, (10, 10))
+        # --- Text display at the BOTTOM of the screen ---
+        line_spacing = 5
+        text_margin = 10  # Margin from screen edges
+        font_height = font.get_height()
 
-        # Game statistics
-        stats_text = font.render(f"Goals: {self.goals_scored}  Attempts: {self.attempts_made}  Coins: {self.coins_earned}", True, constants.WHITE)
-        self.screen.blit(stats_text, (10, 50))
+        # -- Bottom-LEFT Text (Stacked) --
+        # Line 1 (Bottom-most on left): Game Statistics (Goals/Attempts)
+        ga_stats_text_str = f"Goals: {self.goals_scored}  Attempts: {self.attempts_made}"
+        ga_stats_text_surface = font.render(ga_stats_text_str, True, constants.WHITE)
+        ga_stats_text_y = constants.SCREEN_HEIGHT - font_height - text_margin 
+        self.screen.blit(ga_stats_text_surface, (text_margin, ga_stats_text_y))
 
-        # Display coins earned in this session
-        coin_text = font.render(f"Coins this session: {self.coins_earned}", True, constants.YELLOW)
-        self.screen.blit(coin_text, (10, 90))
+        # Line 2 (Middle on left): Session Coins
+        session_coins_text_str = f"Session Coins: {self.coins_earned}"
+        session_coins_text_surface = font.render(session_coins_text_str, True, constants.WHITE)
+        session_coins_text_y = ga_stats_text_y - font_height - line_spacing
+        self.screen.blit(session_coins_text_surface, (text_margin, session_coins_text_y))
 
-        # Instructions
-        if self.game_state == "placing_ball":
-            instructions = [
-                "Click to place ball",
-                "Enter: Confirm placement", 
-                "ESC: Exit to Menu"
-            ]
-            for i, instruction in enumerate(instructions):
-                inst_text = font.render(instruction, True, constants.WHITE)
-                self.screen.blit(inst_text, (constants.SCREEN_WIDTH - 250, 10 + i * 30))
-        elif self.game_state == "ready_to_kick":
-            instructions = [
-                "Arrow Keys: Aim",
-                "WASD: Contact Point", 
-                "Space: Charge Power",
-                "ESC: Exit to Menu"
-            ]
-            for i, instruction in enumerate(instructions):
-                inst_text = font.render(instruction, True, constants.WHITE)
-                self.screen.blit(inst_text, (constants.SCREEN_WIDTH - 250, 10 + i * 30))
+        # Line 3 (Top-most on left): Player Info
+        player_text_str = f"Player: {self.selected_player}"
+        player_text_surface = font.render(player_text_str, True, constants.WHITE)
+        player_text_y = session_coins_text_y - font_height - line_spacing
+        self.screen.blit(player_text_surface, (text_margin, player_text_y))
 
-        # Ball live position readout
-        pos_text = font.render(
-            f"Ball Pos: X={self.ball.world_pos.x:.1f}  Y={self.ball.world_pos.y:.1f}  Z={self.ball.world_pos.z:.2f}",
-            True,
-            constants.WHITE,
-        )
-        self.screen.blit(pos_text, (10, 130))
+        # -- Bottom-RIGHT Text (Stacked) --
+        controls_title_str = "Controls:"
+        control_line1_str = "Click/Enter: Place/Confirm"
+        control_line2_str = "Arrows: Aim | WASD: Contact"
+        control_line3_str = "Space: Charge | R: Reset"
+        control_line4_str = "ESC: Menu"
+
+        control_texts = [
+            font.render(controls_title_str, True, constants.WHITE),
+            font.render(control_line1_str, True, constants.WHITE),
+            font.render(control_line2_str, True, constants.WHITE),
+            font.render(control_line3_str, True, constants.WHITE),
+            font.render(control_line4_str, True, constants.WHITE),
+        ]
+
+        for i, text_surface in enumerate(control_texts):
+            text_x = constants.SCREEN_WIDTH - text_surface.get_width() - text_margin
+            # Start from the bottom and stack upwards
+            text_y = constants.SCREEN_HEIGHT - (len(control_texts) - i) * font_height - (len(control_texts) - 1 - i) * line_spacing - text_margin
+            self.screen.blit(text_surface, (text_x, text_y))
 
         pygame.display.flip()
 

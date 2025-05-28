@@ -1,9 +1,13 @@
 {
-  "coins": 70,
+  "coins": 460,
   "unlocked": [
-    "Elvis"
+    "Elvis",
+    "Neymar",
+    "Ronaldinho",
+    "Roberto Carlos",
+    "Juninho Pernambucano"
   ],
-  "selected": "Elvis",
-  "total_goals": 7,
-  "total_attempts": 27
+  "selected": "Roberto Carlos",
+  "total_goals": 42,
+  "total_attempts": 140
 }

@@ -23,14 +23,14 @@
   "Roberto Carlos": {
     "min_kick_strength": 25.0,
     "max_kick_strength": 50.0,
-    "max_kick_curve": 6.0,
+    "max_kick_curve": 8.0,
     "unlocked": false,
     "price": 200
   },
   "Juninho Pernambucano": {
     "min_kick_strength": 30.0,
     "max_kick_strength": 60.0,
-    "max_kick_curve": 8.0,
+    "max_kick_curve": 13.0,
     "unlocked": false,
     "price": 500
   }

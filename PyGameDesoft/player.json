@@ -23,7 +23,7 @@
   "Roberto Carlos": {
     "min_kick_strength": 25.0,
     "max_kick_strength": 50.0,
-    "max_kick_curve": 8.0,
+    "max_kick_curve": 20.0,
     "unlocked": false,
     "price": 200
   },

@@ -39,8 +39,8 @@ class Goalkeeper:
         max_speed = config_manager.get_setting('goalkeeper_max_speed', default=5.0)
         max_acceleration = config_manager.get_setting('goalkeeper_max_acceleration', default=8.0)
         
-        # Set target x position based on ball's x position if ball is in flight
-        if ball.is_kicked and not ball.is_on_ground:
+        # Set target x position based on ball's x position if ball is moving
+        if ball.velocity.length_squared() > 0.1:
             self.target_x = ball.world_pos.x
         
         # Calculate desired velocity to reach target

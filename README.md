@@ -1,6 +1,8 @@
 PyGameDesoft
 jogo de chutes de falta
 
+Participantes: Gisela Diniz, João Felipe Pereira, Oliver Pickert
+
 Descrição do Jogo:
 "Goal Masters" é um jogo de futebol 3D focado em cobranças de falta. O jogador controla o posicionamento da bola no campo, a mira (setas direcionais esquerda/direita), o ponto de contato na bola para aplicar efeito (teclas W, A, S, D) e a força do chute (barra de espaço). O jogo inclui um goleiro, um sistema de pontuação que recompensa com moedas com base na distância do chute, e uma loja para desbloquear diferentes personagens com habilidades variadas. Há também uma opção para selecionar a música de fundo
 

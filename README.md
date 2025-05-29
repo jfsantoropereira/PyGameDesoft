@@ -1,4 +1,10 @@
-Como Jogar
+PyGameDesoft
+jogo de chutes de falta
+
+Descrição do Jogo:
+"Goal Masters" é um jogo de futebol 3D focado em cobranças de falta. O jogador controla o posicionamento da bola no campo, a mira (setas direcionais esquerda/direita), o ponto de contato na bola para aplicar efeito (teclas W, A, S, D) e a força do chute (barra de espaço). O jogo inclui um goleiro, um sistema de pontuação que recompensa com moedas com base na distância do chute, e uma loja para desbloquear diferentes personagens com habilidades variadas. Há também uma opção para selecionar a música de fundo
+
+Como Jogar:
 Execute python main.py a partir do diretório PyGameDesoft.
 O menu principal aparecerá. Você pode:
 Clicar em "Start" para começar a jogar.
@@ -14,5 +20,6 @@ Resetar: Pressione 'R' para reposicionar a bola e recarregar as configurações 
 Menu: Pressione 'ESC' para retornar ao menu principal (a partir da tela de jogo).
 Marque gols para ganhar moedas. Chutes de longa distância concedem mais moedas.
 Use as moedas na Loja para desbloquear novos jogadores.
-Pacotes Necessários
-pygame
+
+Link do vídeo:
+https://youtu.be/c46CN_HTv_4?si=NVq94Lu59buxYjdF
